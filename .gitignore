@@ -1,0 +1,36 @@
+# Ignore everything by default
+*
+
+# But include the folders we want to commit
+!example/
+!example/**
+!July_30_PPE_RT_copy/
+!July_30_PPE_RT_copy/**
+!common/
+!common/**
+!bin/
+!bin/**
+!sensor/
+!sensor/**
+!system/
+!system/**
+
+# Also include important files
+!README.md
+!eng_READ.md
+!.gitignore
+
+# Exclude debug and other unwanted folders
+July_29_PPE_RT/
+debug/
+
+# Exclude specific example folders we don't want
+example/firmware/
+example/object_detection_yolo_coco-80cls/
+example/object_detection_yolo_street-view/
+
+# Exclude large .tachy model files (too large for GitHub)
+*.tachy
+
+# Exclude .onnx model files
+*.onnx

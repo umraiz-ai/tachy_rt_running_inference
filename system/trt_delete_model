@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+
+import os, sys
+import argparse
+import numpy as np
+import tachy_rt.core.functions as rt_core
+
+def get_parser():
+    """
+    Get the parser.
+    :return: parser
+    """
+
+    parser = argparse.ArgumentParser(description='Deep learning scratch application.')
+    
+    parser.add_argument('--name', type=str, help='Name for model')
+
+    args = parser.parse_args()
+
+    ENVS = os.environ
+    if not "TACHY_INTERFACE" in ENVS:
+        print("Environment \"TACHY_INTERFACE\" is not set")
+        exit()
+
+    args.interface = ENVS["TACHY_INTERFACE"]
+
+    return args
+
+if __name__ == '__main__':
+    args = get_parser()
+
+    ret = rt_core.delete_model(itf=args.interface, name=args.name)
+    if ret:
+        print("Success to delete model")
+    else:
+        print("Failed to delete model")
+        print("Error code :", rt_core.get_last_error_code())
+        exit(-1)

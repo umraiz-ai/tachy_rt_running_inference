@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+
+import os, sys
+import argparse
+import tachy_rt.core.functions as rt_core
+
+def get_parser():
+    """
+    Get the parser.
+    :return: parser
+    """
+
+    parser = argparse.ArgumentParser(description='Deep learning scratch application.')
+    parser.add_argument('--tx', type=str,
+                        help='Number of tx',
+                        required=True)
+    
+    parser.add_argument('--crop', type=int,
+                        help='Crop[x0,y0,x1,y1], default=[0,0,1919,1079]',
+                        default=[0,0,1919,1079], nargs='+')
+
+    parser.add_argument('--ratio', type=int,
+                        help='Ratio for image(w = (crop_w / ratio), h = (crop_h / ratio))',
+                        required=True)
+
+    parser.add_argument('--dtype', type=str,
+                        help='Data type(float16 or uint8)',
+                        default='float16')
+
+    parser.add_argument('--rgb', type=str,
+                        help='RGB ordering(true = rgb, false=bgr)',
+                        default='true')
+
+    parser.add_argument('--fmt', type=str,
+                        help='Input Format(BT1120 / BT656 / Bayer)',
+                        default='BT1120')
+
+    parser.add_argument('--inverse_data', type=str,
+                        help='Inversion Y <-> C',
+                        default='true')
+
+    parser.add_argument('--inverse_sync', type=str,
+                        help='Inversion sync',
+                        default='false')
+
+    parser.add_argument('--inverse_clock', type=str,
+                        help='Inversion clock',
+                        default='false')
+
+    parser.add_argument('--reset', type=str,
+                        help='Reset tx',
+                        default='true')
+
+    args = parser.parse_args()
+
+    ENVS = os.environ
+    if not "TACHY_INTERFACE" in ENVS:
+        print("Environment \"TACHY_INTERFACE\" is not set")
+        exit()
+
+    args.tx            = int(args.tx)
+    args.crop          = args.crop
+    args.ratio         = args.ratio
+    args.rgb           = True if args.rgb.lower() == 'true'                       else False
+    args.fmt           = args.fmt
+    args.dtype         = rt_core.DTYPE_FLOAT16 if args.dtype.lower() == 'float16' else rt_core.DTYPE_UINT8
+    args.inverse_data  = True if args.inverse_data.lower() == 'true'              else False
+    args.inverse_sync  = True if args.inverse_sync.lower() == 'true'              else False
+    args.inverse_clock = True if args.inverse_clock.lower() == 'true'             else False
+    args.reset         = True if args.reset.lower() == 'true'                     else False
+    args.interface     = ENVS["TACHY_INTERFACE"]
+
+    return args
+
+if __name__ == '__main__':
+    args = get_parser()
+
+    ret = rt_core.enable_sensor(itf=args.interface,
+                                tx=args.tx,
+                                ratio=args.ratio,
+                                crop=args.crop,
+                                dtype=args.dtype,
+                                inverse_data=args.inverse_data,
+                                inverse_sync=args.inverse_sync,
+                                inverse_clock=args.inverse_clock,
+                                reset=args.reset)
+    if not ret:
+        print("Failed to enable sensor")
+        print("error : ", rt_core.get_last_error_code())
+        exit()
+
+    print("Success to enable sensor.")

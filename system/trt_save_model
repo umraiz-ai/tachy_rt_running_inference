@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+
+import os, sys
+import argparse
+import numpy as np
+import tachy_rt.core.functions as rt_core
+
+def get_parser():
+    """
+    Get the parser.
+    :return: parser
+    """
+
+    parser = argparse.ArgumentParser(description='Deep learning scratch application.')
+    
+    parser.add_argument('--name',      type=str, help='Name for model')
+    parser.add_argument('--model',     type=str, help='Path for model')
+    parser.add_argument('--storage',   type=str, help='Storage(memory or nor)')
+    parser.add_argument('--overwrite', type=str, help='Overwrite(true or false)')
+
+    args = parser.parse_args()
+
+    args.overwrite = False if 'false' == args.overwrite.lower() else True
+    if args.storage.lower() == 'memory':
+        args.storage = rt_core.MODEL_STORAGE_MEMORY
+    elif args.storage.lower() == 'nor':
+        args.storage = rt_core.MODEL_STORAGE_NOR
+    else:
+        print("Storage must be \'memory\' or \'nor\'")
+        exit()
+
+    ENVS = os.environ
+    if not "TACHY_INTERFACE" in ENVS:
+        print("Environment \"TACHY_INTERFACE\" is not set")
+        exit()
+
+    args.interface = ENVS["TACHY_INTERFACE"]
+
+    return args
+
+if __name__ == '__main__':
+    args = get_parser()
+
+    ret = rt_core.save_model(itf=args.interface, name=args.name, storage=args.storage, model=args.model, overwrite=args.overwrite)
+
+    if ret:
+        print("Success to save model")
+    else:
+        print("Failed to save model")
+        print("Error code :", rt_core.get_last_error_code())
+        exit(-1)
