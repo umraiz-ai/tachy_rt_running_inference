@@ -1,0 +1,15 @@
+chatgpt says it is has kernel 5.4
+It also says that bootloader are backward compatible. 
+that means the latest bootloader can run 5.4 kernel ubuntu 20.04
+but it did not work . 
+since bootloader was of latest version.
+and the firmware camw with ubuntu 20.04 was old.
+what chatgpt suggested is to change some files like ,elf .bin and .dat files.
+let us see what happens.
+it worked and OS was booted successfully
+I was also able to run the example successfully
+
+
+Path to the exact image
+
+C:\Users\M-UMR\Desktop\Raspberry_Pi_image_July_3\ubuntu-20.04.1-preinstalled-server-arm64+raspi.img----working
