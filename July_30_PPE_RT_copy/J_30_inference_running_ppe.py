@@ -12,9 +12,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import importlib
 import tachy_rt.core.functions as rt_core
+import logging
 
 from threading import Thread
 from functions import *
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.info("SCRIPT START: %s", __file__)
 
 def create_args():
     def get_parser():
@@ -101,6 +105,13 @@ def create_args():
         print(f"Error: No valid images found in {args.input_dir}")
         exit(-1)
 
+    logging.info("ARGS: model=%s input_shape=%s input_dir=%s model_path=%s output_dir=%s",
+                 getattr(args, "model", None),
+                 getattr(args, "input_shape", None),
+                 getattr(args, "input_dir", None),
+                 getattr(args, "model_path", None),
+                 getattr(args, "output_dir", None))
+
     return args
 
 def boot(args):
@@ -120,6 +131,7 @@ def boot(args):
 def save_model(args):
     ''' Upload model '''
     ret = rt_core.save_model(args.interface, args.model_name, rt_core.MODEL_STORAGE_MEMORY, args.model_path, overwrite=True)
+    logging.info("MODEL INITIALIZED: %s", getattr(args, "model_path", "<unknown>"))
     return ret
 
 def make_instance(args):
@@ -188,6 +200,7 @@ def inference(args):
         
         args.anno = args.post.main(output_data, np.array([[0, 0, args.w-1, args.h-1]], dtype=np.float32))
 
+        logging.info("PROCESSING IMAGE: %d/%d", i+1, len(args.images_input))
         print(f"Image {i+1}: Found {len(args.anno)} detections")
         for j, box in enumerate(args.anno):
             confidence = box[0]

@@ -1,10 +1,10 @@
 {
-    "SHAPES_GRID": [[39, 28]],
-    "SHAPES_OUTPUT": [[39, 28, 16]],
-    "SHAPES_INPUT": [256, 416],
+    "SHAPES_INPUT": [256, 416, 3],
+    "SHAPES_OUTPUT": [
+        [32, 52, 8], [16, 26, 8], [8, 13, 8]
+    ],
     "OBJ_THRESHOLD": 0.9,
     "NMS_THRESHOLD": 0.2,
-    "PRE_THRESHOLD": 0.8,
     "N_BOX_LOGIT": 4,
     "N_CLASSES": 4,
     "N_MAX_OBJ": 5

@@ -1,0 +1,2 @@
+[WARNING] Cannot find turbojpeg library
+[2025-08-19 08:38:29     tachyrt_model.py ->                __init__():  17]  INFO: init tachyrt_model v2.0

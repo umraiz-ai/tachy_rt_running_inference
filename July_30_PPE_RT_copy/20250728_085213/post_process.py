@@ -69,7 +69,9 @@ class Decoder:
     def __init__(self, configs=None):
         # Hyper-parameters
         grid_sizes = np.asarray(configs['SHAPES_GRID'], dtype='float32') if 'SHAPES_GRID' in configs else np.array([
-            [39,28],  # Default for 256x416 PPE model (single scale)
+            [8,8],
+            [16,16],
+            [32,32],
         ], dtype='float32')
 
         output_shapes = np.asarray(configs['SHAPES_OUTPUT'], dtype='int32')
@@ -108,39 +110,27 @@ class Decoder:
         rh = self.input_shapes[0]
         return np.concatenate([rw/w, rh/h], axis=-1) # (B,2)
         
-    def split_logits(self, x, n, n_channels=(4, 4)):
+    def split_logits(self, x, n, n_channels=(4, 80)):
         return np.reshape(x[:n * n_channels[0]], (-1, n_channels[0])), np.reshape(x[n * n_channels[0]:], (-1, n_channels[1]))
 
     def get_object_prob(self, x):
-        # Clip extreme values to prevent sigmoid overflow
-        x = np.clip(x, -50, 50)  # Prevent overflow in exp()
         x = sigmoid(x)
-        
-        # Only consider the first n_cls classes (4 for PPE model)
-        class_scores = x[:, :self.n_cls] if x.shape[1] > self.n_cls else x
-        idx = np.argmax(class_scores, axis=-1)[..., None]
-        prob = np.max(class_scores, axis=-1)[..., None]
+        idx = np.argmax(x, axis=-1)[..., None]
+        prob = np.max(x, axis=-1)[..., None]
         return idx, prob
 
     def main(self, logits, reference):
         '''
-        logits = ((N,4), (N,4)) - 4 box coords + 4 PPE classes
+        logits = ((N,4), (N,80))
         '''
         # Scaling Factor
         outputs = np.array([], dtype='float32')
         n_batch = len(reference)
         scale_ratio = np.repeat(self.get_scale_ratio(reference), self.n_grid, axis=0) # (B,2) -> (B*G,2)
         pre_bases = np.repeat(reference[..., :2], self.n_grid, axis=0)                # (B,2) -> (B*G,2)
-        # Calculate the correct channel split for 4-class model
-        total_elements = len(logits)
-        box_elements = self.n_grid * 4  # 4 box coordinates per grid cell
-        cls_elements = total_elements - box_elements
-        cls_channels = cls_elements // self.n_grid  # Calculate class channels per grid cell
-        
-        box_pred, cls_pred = self.split_logits(logits, self.n_grid, n_channels=(4, cls_channels))
+        box_pred, cls_pred = self.split_logits(logits, self.n_grid)
         cls_idx, obj_pred = self.get_object_prob(cls_pred)
 
-        # Apply thresholds more strictly
         mask = np.greater_equal(obj_pred[..., 0], max(self.pre_threshold, self.obj_threshold))
         if np.any(mask):
             obj_pred = obj_pred[mask]
@@ -150,18 +140,6 @@ class Decoder:
             pre_bases = pre_bases[mask]
             grid_bases = self.grid_bases[:n_batch * self.n_grid, ...][mask]
             grid_sizes = self.grid_sizes[:n_batch * self.n_grid, ...][mask]
-            
-            # Limit to N_MAX_OBJ before expensive processing
-            if len(obj_pred) > self.n_max:
-                # Sort by confidence and keep only top N
-                top_indices = np.argsort(obj_pred[..., 0])[-self.n_max:]
-                obj_pred = obj_pred[top_indices]
-                box_pred = box_pred[top_indices]
-                cls_idx = cls_idx[top_indices]
-                scale_ratio = scale_ratio[top_indices]
-                pre_bases = pre_bases[top_indices]
-                grid_bases = grid_bases[top_indices]
-                grid_sizes = grid_sizes[top_indices]
             
             # Decode
             box_pred = self.decode_box(
@@ -176,14 +154,6 @@ class Decoder:
                 obj_pred = obj_pred[mask]
                 box_pred = box_pred[mask]
                 cls_idx  = cls_idx[mask]
-                
-                # Final limit to N_MAX_OBJ after NMS
-                if len(obj_pred) > self.n_max:
-                    top_indices = np.argsort(obj_pred[..., 0])[-self.n_max:]
-                    obj_pred = obj_pred[top_indices]
-                    box_pred = box_pred[top_indices]
-                    cls_idx = cls_idx[top_indices]
-                
                 outputs = np.concatenate(
                     [obj_pred, cls_idx, box_pred], axis=-1
                 )
