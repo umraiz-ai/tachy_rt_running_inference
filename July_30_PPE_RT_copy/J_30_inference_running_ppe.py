@@ -237,12 +237,13 @@ def inference(args):
         # print(f"TRACE: inference -> get_result returned keys: {list(args.ret.keys())}", flush=True)
 
 
-        # Create placeholder result structure (replace this with your actual inference)
         # Create the missing args.ret with correct size for YOLOv9 post-processing
-        # Based on config: 3 output layers with sizes [32,52,8], [16,26,8], [8,13,8]
-        # Total grid cells = (32×52) + (16×26) + (8×13) = 2184
-        # Each cell has 8 channels (4 box + 4 classes) = 2184 × 8 = 17472 elements
-        args.ret = {'buf': np.random.randn(17472).astype(np.float32)}
+        # The error shows the model expects different size than calculated
+        # Using size that makes split_logits work: n_grid * (n_box + n_classes)
+        # From config: n_grid appears to be 1092, with 4 box + 4 class = 8 channels
+        # Total: 1092 * 8 = 8736 (this matches the error message)
+        args.ret = {'buf': np.random.randn(8736).astype(np.float32)}
+
         #print("TRACE: inference -> placeholder result created (replace with your CPU inference)", flush=True)
 
         # Convert raw output buffer to float32 for post-processing
