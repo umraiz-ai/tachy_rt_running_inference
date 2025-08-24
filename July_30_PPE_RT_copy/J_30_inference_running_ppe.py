@@ -208,11 +208,21 @@ def inference(args):
     sys.path.append(args.post_process_dir)
     print(f"TRACE: inference -> importing post_process from {args.post_process_dir}", flush=True)
     
-    # Initialize YOLOv9 decoder with configuration
+    # # Initialize YOLOv9 decoder with configuration
+    # post_process_module = importlib.import_module('post_process')
+    # args.post = post_process_module.Decoder(args.post_config_data)
+    # print("TRACE: inference -> post_process.Decoder instantiated", flush=True)
+    
+        # Initialize YOLOv9 decoder with configuration
     post_process_module = importlib.import_module('post_process')
     args.post = post_process_module.Decoder(args.post_config_data)
-    print("TRACE: inference -> post_process.Decoder instantiated", flush=True)
     
+    # DEBUG: Temporarily lower confidence threshold for testing
+    print(f"DEBUG: Original confidence threshold: {args.post.obj_threshold[0]}", flush=True)
+    
+    print("TRACE: inference -> post_process.Decoder instantiated", flush=True)
+
+
     # # DEBUG: Print ALL attributes of the decoder instance
     # print(f"ALL Decoder attributes:")
     # for attr in dir(args.post):
@@ -242,9 +252,96 @@ def inference(args):
         # Using size that makes split_logits work: n_grid * (n_box + n_classes)
         # From config: n_grid appears to be 1092, with 4 box + 4 class = 8 channels
         # Total: 1092 * 8 = 8736 (this matches the error message)
-        args.ret = {'buf': np.random.randn(8736).astype(np.float32)}
+        #args.ret = {'buf': np.random.randn(8736).astype(np.float32)}
+        #print("TRACE: inference -> placeholder result created (replace with your CPU inference)", flush=True)
+
+        # Use ONNX model for CPU inference
+        try:
+            import onnxruntime as ort
+            
+            # Load your eval.onnx model
+            onnx_path = args.post_process_dir + "/eval.onnx"
+            print(f"TRACE: Loading ONNX model from {onnx_path}", flush=True)
+            
+            # Create ONNX Runtime session for CPU
+            session = ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider'])
+            
+            # Get input/output info
+            input_name = session.get_inputs()[0].name
+            input_shape = session.get_inputs()[0].shape
+            print(f"TRACE: ONNX input name: {input_name}", flush=True)
+            print(f"TRACE: ONNX input shape: {input_shape}", flush=True)
+            
+            # Prepare input data
+            input_data = image.astype(np.float32) / 255.0  # Normalize to [0,1]
+            
+            # Check if we need NCHW format (Batch, Channel, Height, Width)
+            if len(input_shape) == 4 and input_shape[1] == 3:
+                # Convert BHWC to BCHW for ONNX
+                input_data = np.transpose(input_data, (0, 3, 1, 2))
+                print("TRACE: Converted input to NCHW format for ONNX", flush=True)
+            
+            # Run inference on CPU
+            print("TRACE: Running ONNX inference on CPU...", flush=True)
+            outputs = session.run(None, {input_name: input_data})
+            
+            # Get output data and flatten it
+            # output_data = outputs[0].flatten()
+            
+            # args.ret = {'buf': output_data}
+            # print(f"TRACE: ONNX CPU inference complete!", flush=True)
+            # print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
+            
+            # # Check if size matches expectation
+            # if output_data.size != 8736:
+            #     print(f"INFO: ONNX output size {output_data.size} differs from expected 8736", flush=True)
+            #     print("INFO: This is normal - ONNX may have different output format than .tachyrt", flush=True)
+            
+                        # Get output data and flatten it
+            output_data = outputs[0].flatten()
+            
+            # DEBUG: Print output information
+            print(f"DEBUG: ONNX raw output shape: {outputs[0].shape}", flush=True)
+            print(f"DEBUG: ONNX flattened size: {output_data.size}", flush=True)
+            print(f"DEBUG: Expected channels: 8 (4 box + 4 classes)", flush=True)
+            print(f"DEBUG: Calculated grid cells: {output_data.size // 8}", flush=True)
+            
+            args.ret = {'buf': output_data}
+            print(f"TRACE: ONNX CPU inference complete!", flush=True)
+            print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
+            
+            # Check if size matches expectation and adjust
+            if output_data.size != 8736:
+                print(f"INFO: ONNX output size {output_data.size} differs from expected 8736", flush=True)
+                print("INFO: Adjusting post-processing configuration to match ONNX output", flush=True)
+                
+                # Update the decoder's n_grid to match ONNX output
+                args.post.n_grid = output_data.size // 8
+                print(f"INFO: Updated n_grid from 1092 to {args.post.n_grid}", flush=True)
+
+
+        except ImportError:
+            print("ERROR: onnxruntime not installed. Install with: pip install onnxruntime", flush=True)
+            print("TRACE: Falling back to fake data...", flush=True)
+            # Create fake data fallback
+            args.ret = {'buf': np.random.randn(8736).astype(np.float32)}
+            
+        except FileNotFoundError:
+            print(f"ERROR: eval.onnx not found at {onnx_path}", flush=True)
+            print("TRACE: Make sure eval.onnx is in the correct directory", flush=True)
+            print("TRACE: Falling back to fake data...", flush=True)
+            # Create fake data fallback
+            args.ret = {'buf': np.random.randn(8736).astype(np.float32)}
+            
+        except Exception as e:
+            print(f"ERROR: ONNX inference failed: {e}", flush=True)
+            print("TRACE: Falling back to fake data...", flush=True)
+            # Create fake data fallback
+            args.ret = {'buf': np.random.randn(8736).astype(np.float32)}
 
         #print("TRACE: inference -> placeholder result created (replace with your CPU inference)", flush=True)
+
+
 
         # Convert raw output buffer to float32 for post-processing
         try:
