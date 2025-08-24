@@ -317,7 +317,8 @@ def inference(args):
                 
                 # Update the decoder's n_grid to match ONNX output
                 args.post.n_grid = output_data.size // 8
-                print(f"INFO: Updated n_grid from 1092 to {args.post.n_grid}", flush=True)
+                #print(f"INFO: Updated n_grid from 1092 to {args.post.n_grid}", flush=True)
+                    # Convert raw output buffer to float32 for post-processing
 
 
         except ImportError:
@@ -350,12 +351,68 @@ def inference(args):
         except Exception as e:
             print(f"ERROR: failed to convert output buffer to float32: {e}", flush=True)
             raise
+                # Convert raw output buffer to float32 for post-processing
+        try:
+            output_data = args.ret['buf'].view(np.float32)
+            print(f"TRACE: inference -> output_data size: {output_data.size}", flush=True)
+        except Exception as e:
+            print(f"ERROR: failed to convert output buffer to float32: {e}", flush=True)
+            raise
 
+        # DEBUG: Add comprehensive debugging before post-processing
+        print(f"DEBUG: Before post-processing - output_data range: {output_data.min():.3f} to {output_data.max():.3f}")
+        print(f"DEBUG: Post-processor config - OBJ_THRESHOLD: {args.post.obj_threshold}, NMS_THRESHOLD: {getattr(args.post, 'nms_threshold', 'not found')}")
+        print(f"DEBUG: Post-processor config - N_MAX_OBJ: {getattr(args.post, 'n_max_obj', 'not found')}")
+        print(f"DEBUG: Post-processor config - N_GRID: {getattr(args.post, 'n_grid', 'not found')}")
+
+        # DEBUG: Print ALL post-processor attributes to see what's available
+        print("DEBUG: All post-processor attributes:")
+        for attr in dir(args.post):
+            if not attr.startswith('_') and not callable(getattr(args.post, attr)):
+                value = getattr(args.post, attr)
+                print(f"  {attr}: {value}")
+
+        # FORCE proper post-processing parameters
+        if not hasattr(args.post, 'nms_threshold'):
+            args.post.nms_threshold = 0.4  # More aggressive NMS
+            print(f"DEBUG: Set missing nms_threshold to {args.post.nms_threshold}")
+        
+        if not hasattr(args.post, 'n_max_obj'):
+            args.post.n_max_obj = 10  # Limit to 10 detections max
+            print(f"DEBUG: Set missing n_max_obj to {args.post.n_max_obj}")
+        
+        # Increase confidence threshold to reduce false positives
+        original_threshold = args.post.obj_threshold[0]
+        args.post.obj_threshold = np.array([0.95], dtype='float32')  # Increase from 0.9 to 0.95
+        print(f"DEBUG: Increased confidence threshold from {original_threshold} to {args.post.obj_threshold[0]}")        
+        
         # Decode YOLOv9 output to bounding boxes and classes
+
         args.anno = args.post.main(output_data, np.array([[0, 0, args.w-1, args.h-1]], dtype=np.float32))
         print(f"TRACE: inference -> post.main returned {len(args.anno)} annotations", flush=True)
+        
+
+        # DEBUG: Analyze detection confidence scores
+        if len(args.anno) > 0:
+            confidences = [box[0] for box in args.anno]
+            print(f"DEBUG: Confidence scores - min: {min(confidences):.3f}, max: {max(confidences):.3f}, avg: {np.mean(confidences):.3f}")
+            print(f"DEBUG: Number above 0.5: {sum(1 for c in confidences if c > 0.5)}")
+            print(f"DEBUG: Number above 0.9: {sum(1 for c in confidences if c > 0.9)}")
+
+             # FORCE detection limit since n_max_obj isn't working properly
+            max_detections = 10
+            if len(args.anno) > max_detections:
+                print(f"DEBUG: Limiting {len(args.anno)} detections to top {max_detections} by confidence")
+                # Sort by confidence (first column) in descending order and take top N
+                args.anno = sorted(args.anno, key=lambda x: x[0], reverse=True)[:max_detections]
+                print(f"DEBUG: After limiting: {len(args.anno)} detections")
+ 
+        
+        else:
+            print("DEBUG: No detections found")
 
         logging.info("PROCESSING IMAGE: %d/%d", i+1, len(args.images_input))
+        
         print(f"Image {i+1}: Found {len(args.anno)} detections", flush=True)
         
         # Log detection details
