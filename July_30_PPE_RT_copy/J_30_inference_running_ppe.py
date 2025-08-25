@@ -294,50 +294,43 @@ def inference(args):
                 print(f"DEBUG: Output {i} dtype: {output.dtype}")
                 print(f"DEBUG: Output {i} range: {output.min():.3f} to {output.max():.3f}")
                 print(f"DEBUG: Output {i} sample values: {output.flatten()[:10]}")
-      
+           
+            # PASS RAW ONNX OUTPUTS TO POST-PROCESSOR (First Step)
+            print("DEBUG: Passing raw ONNX outputs to post-processor...")
+            
+            
+                       # Store raw outputs for post-processor to handle
+            args.ret = {'raw_onnx_outputs': outputs}
+            
+            # TEMPORARY: Create 'buf' with flattened ONNX outputs for compatibility
+            # This preserves real data instead of using dummy data
+            all_outputs_flat = np.concatenate([output.flatten() for output in outputs])
+            args.ret['buf'] = all_outputs_flat.astype(np.float32)
+            
+            # CRITICAL: Update n_grid to match the actual flattened output size
+            args.post.n_grid = all_outputs_flat.size // 8
+            print(f"DEBUG: FIXED n_grid to {args.post.n_grid} for flattened output size {all_outputs_flat.size}")
+            
+            print(f"DEBUG: Number of raw outputs: {len(outputs)}")
+            for i, output in enumerate(outputs):
+                print(f"DEBUG: Output {i} shape: {output.shape}")
+            
+            # Calculate expected total size for compatibility
+            total_elements = sum(np.prod(output.shape) for output in outputs)
+            print(f"DEBUG: Total elements in all outputs: {total_elements}")
+            print(f"DEBUG: Created buf with {all_outputs_flat.size} elements from real ONNX data")
 
-            # PROPER MULTI-SCALE YOLO OUTPUT PROCESSING
-            print("DEBUG: Processing multi-scale YOLO outputs...")
-            
-            # Process each scale (3 scales total)
-            scales_data = []
-            for scale_idx in range(0, len(outputs), 2):  # Process pairs: (0,1), (2,3), (4,5)
-                if scale_idx + 1 < len(outputs):
-                    box_output = outputs[scale_idx]      # Box coordinates
-                    conf_output = outputs[scale_idx + 1] # Class confidences (logits)
-                    
-                    print(f"DEBUG: Scale {scale_idx//2} - Box shape: {box_output.shape}, Conf shape: {conf_output.shape}")
-                    
-                    # Apply sigmoid to confidence logits
-                    conf_probs = 1 / (1 + np.exp(-np.clip(conf_output, -500, 500)))
-                    print(f"DEBUG: Scale {scale_idx//2} - Conf after sigmoid: {conf_probs.min():.3f} to {conf_probs.max():.3f}")
-                    
-                    # Combine box + confidence: (batch, 8, height, width)
-                    combined = np.concatenate([box_output, conf_probs], axis=1)
-                    print(f"DEBUG: Scale {scale_idx//2} - Combined shape: {combined.shape}")
-                    
-                    # Flatten and append
-                    scales_data.append(combined.flatten())
-            
-            # Concatenate all scales
-            output_data = np.concatenate(scales_data)
-            print(f"DEBUG: Final combined output size: {output_data.size}")
-            print(f"DEBUG: Final output range: {output_data.min():.3f} to {output_data.max():.3f}")
+            print(f"DEBUG: Total elements in all outputs: {total_elements}")
 
-            args.ret = {'buf': output_data}
-            
             print(f"TRACE: ONNX CPU inference complete!", flush=True)
-            print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
             
-            # Update post-processing configuration for multi-scale output
-            args.post.n_grid = output_data.size // 8
-            print(f"INFO: Updated n_grid to {args.post.n_grid} for multi-scale YOLO output")
-
+            
+            
             # Check if size matches expectation and adjust
 
 
 
-            print(f"TRACE: ONNX CPU inference complete!", flush=True)
+            
             print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
             
             # Check if size matches expectation and adjust
@@ -375,13 +368,6 @@ def inference(args):
 
 
         # Convert raw output buffer to float32 for post-processing
-        try:
-            output_data = args.ret['buf'].view(np.float32)
-            print(f"TRACE: inference -> output_data size: {output_data.size}", flush=True)
-        except Exception as e:
-            print(f"ERROR: failed to convert output buffer to float32: {e}", flush=True)
-            raise
-                # Convert raw output buffer to float32 for post-processing
         try:
             output_data = args.ret['buf'].view(np.float32)
             print(f"TRACE: inference -> output_data size: {output_data.size}", flush=True)
