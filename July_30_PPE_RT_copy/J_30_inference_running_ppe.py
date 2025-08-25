@@ -285,28 +285,58 @@ def inference(args):
             print("TRACE: Running ONNX inference on CPU...", flush=True)
             outputs = session.run(None, {input_name: input_data})
             
-            # Get output data and flatten it
-            # output_data = outputs[0].flatten()
             
-            # args.ret = {'buf': output_data}
-            # print(f"TRACE: ONNX CPU inference complete!", flush=True)
-            # print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
             
-            # # Check if size matches expectation
-            # if output_data.size != 8736:
-            #     print(f"INFO: ONNX output size {output_data.size} differs from expected 8736", flush=True)
-            #     print("INFO: This is normal - ONNX may have different output format than .tachyrt", flush=True)
+            # DEBUG: Analyze ONNX outputs in detail
+            print(f"DEBUG: Number of ONNX outputs: {len(outputs)}")
+            for i, output in enumerate(outputs):
+                print(f"DEBUG: Output {i} shape: {output.shape}")
+                print(f"DEBUG: Output {i} dtype: {output.dtype}")
+                print(f"DEBUG: Output {i} range: {output.min():.3f} to {output.max():.3f}")
+                print(f"DEBUG: Output {i} sample values: {output.flatten()[:10]}")
+      
+
+            # PROPER MULTI-SCALE YOLO OUTPUT PROCESSING
+            print("DEBUG: Processing multi-scale YOLO outputs...")
             
-                        # Get output data and flatten it
-            output_data = outputs[0].flatten()
+            # Process each scale (3 scales total)
+            scales_data = []
+            for scale_idx in range(0, len(outputs), 2):  # Process pairs: (0,1), (2,3), (4,5)
+                if scale_idx + 1 < len(outputs):
+                    box_output = outputs[scale_idx]      # Box coordinates
+                    conf_output = outputs[scale_idx + 1] # Class confidences (logits)
+                    
+                    print(f"DEBUG: Scale {scale_idx//2} - Box shape: {box_output.shape}, Conf shape: {conf_output.shape}")
+                    
+                    # Apply sigmoid to confidence logits
+                    conf_probs = 1 / (1 + np.exp(-np.clip(conf_output, -500, 500)))
+                    print(f"DEBUG: Scale {scale_idx//2} - Conf after sigmoid: {conf_probs.min():.3f} to {conf_probs.max():.3f}")
+                    
+                    # Combine box + confidence: (batch, 8, height, width)
+                    combined = np.concatenate([box_output, conf_probs], axis=1)
+                    print(f"DEBUG: Scale {scale_idx//2} - Combined shape: {combined.shape}")
+                    
+                    # Flatten and append
+                    scales_data.append(combined.flatten())
             
-            # DEBUG: Print output information
-            print(f"DEBUG: ONNX raw output shape: {outputs[0].shape}", flush=True)
-            print(f"DEBUG: ONNX flattened size: {output_data.size}", flush=True)
-            print(f"DEBUG: Expected channels: 8 (4 box + 4 classes)", flush=True)
-            print(f"DEBUG: Calculated grid cells: {output_data.size // 8}", flush=True)
-            
+            # Concatenate all scales
+            output_data = np.concatenate(scales_data)
+            print(f"DEBUG: Final combined output size: {output_data.size}")
+            print(f"DEBUG: Final output range: {output_data.min():.3f} to {output_data.max():.3f}")
+
             args.ret = {'buf': output_data}
+            
+            print(f"TRACE: ONNX CPU inference complete!", flush=True)
+            print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
+            
+            # Update post-processing configuration for multi-scale output
+            args.post.n_grid = output_data.size // 8
+            print(f"INFO: Updated n_grid to {args.post.n_grid} for multi-scale YOLO output")
+
+            # Check if size matches expectation and adjust
+
+
+
             print(f"TRACE: ONNX CPU inference complete!", flush=True)
             print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
             
@@ -370,7 +400,7 @@ def inference(args):
         for attr in dir(args.post):
             if not attr.startswith('_') and not callable(getattr(args.post, attr)):
                 value = getattr(args.post, attr)
-                print(f"  {attr}: {value}")
+                #print(f"  {attr}: {value}")
 
         # FORCE proper post-processing parameters
         if not hasattr(args.post, 'nms_threshold'):
@@ -445,7 +475,6 @@ def inference(args):
     # COMMENTED OUT: NPU cleanup
     # Clean up inference instance
     #rt_core.deinit_instance(args.interface, args.model_name)
-    print("TRACE: inference -> deinit_instance called", flush=True)
 
 def display(args):
     # Prepare visualization by combining original and processed images
