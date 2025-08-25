@@ -304,12 +304,33 @@ def inference(args):
             
             # TEMPORARY: Create 'buf' with flattened ONNX outputs for compatibility
             # This preserves real data instead of using dummy data
-            all_outputs_flat = np.concatenate([output.flatten() for output in outputs])
+                      # CORRECT: Process ONNX outputs according to multi-scale YOLO format
+            # Outputs come in pairs: (box_coords, class_logits) for each scale
+            all_box_coords = []
+            all_class_logits = []
+            
+            # Process each scale pair: (0,1), (2,3), (4,5)
+            for scale_idx in range(0, len(outputs), 2):
+                if scale_idx + 1 < len(outputs):
+                    box_output = outputs[scale_idx]      # Box coordinates
+                    conf_output = outputs[scale_idx + 1] # Class logits (need sigmoid)
+                    
+                    # Apply sigmoid activation to class logits to get proper confidence scores
+                    conf_probs = 1 / (1 + np.exp(-np.clip(conf_output, -500, 500)))
+                    
+                    # Flatten each output for concatenation
+                    all_box_coords.append(box_output.flatten())
+                    all_class_logits.append(conf_probs.flatten())
+                    
+                    print(f"DEBUG: Scale {scale_idx//2} - Box: {box_output.shape}, Conf after sigmoid: {conf_probs.min():.3f} to {conf_probs.max():.3f}")
+            
+            # Concatenate in the format expected by post-processor: [all_boxes, all_classes]
+            all_outputs_flat = np.concatenate(all_box_coords + all_class_logits)
             args.ret['buf'] = all_outputs_flat.astype(np.float32)
             
             # CRITICAL: Update n_grid to match the actual flattened output size
             args.post.n_grid = all_outputs_flat.size // 8
-            print(f"DEBUG: FIXED n_grid to {args.post.n_grid} for flattened output size {all_outputs_flat.size}")
+            print(f"DEBUG: CORRECTED n_grid to {args.post.n_grid} for properly processed output size {all_outputs_flat.size}")
             
             print(f"DEBUG: Number of raw outputs: {len(outputs)}")
             for i, output in enumerate(outputs):
@@ -318,18 +339,10 @@ def inference(args):
             # Calculate expected total size for compatibility
             total_elements = sum(np.prod(output.shape) for output in outputs)
             print(f"DEBUG: Total elements in all outputs: {total_elements}")
-            print(f"DEBUG: Created buf with {all_outputs_flat.size} elements from real ONNX data")
-
-            print(f"DEBUG: Total elements in all outputs: {total_elements}")
 
             print(f"TRACE: ONNX CPU inference complete!", flush=True)
-            
-            
-            
+        
             # Check if size matches expectation and adjust
-
-
-
             
             print(f"TRACE: Output size: {output_data.size} (expected: 8736)", flush=True)
             
@@ -399,7 +412,7 @@ def inference(args):
         
         # Increase confidence threshold to reduce false positives
         original_threshold = args.post.obj_threshold[0]
-        args.post.obj_threshold = np.array([0.95], dtype='float32')  # Increase from 0.9 to 0.95
+        args.post.obj_threshold = np.array([0.2], dtype='float32')  
         print(f"DEBUG: Increased confidence threshold from {original_threshold} to {args.post.obj_threshold[0]}")        
         
         # Decode YOLOv9 output to bounding boxes and classes
